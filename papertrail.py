@@ -66,7 +66,12 @@ def llm_chat(messages: list[dict], temperature: float = 0.2, max_tokens: int = 1
     response = requests.post(LLAMA_API_URL, json=payload, timeout=120)
     response.raise_for_status()
 
-    return response.json()["choices"][0]["message"]["content"]
+    try:
+        return response.json()["choices"][0]["message"]["content"]
+    except (KeyError, IndexError) as e:
+        raise KeyError(
+            f"Unexpected response format from LLM server: {response.json()}"
+        ) from e
 
 
 # =============================================================================
@@ -114,11 +119,14 @@ def split_into_chunks(
             # Save current chunk if non-empty
             if current:
                 chunks.append(current)
+                # Apply overlap for next chunk
+                current = current[-overlap:] if overlap > 0 and len(current) > overlap else ""
 
             # Handle paragraph that exceeds max_chars
             while len(paragraph) > max_chars:
                 chunks.append(paragraph[:max_chars])
-                paragraph = paragraph[max_chars - overlap:]
+                # Apply overlap for next chunk
+                paragraph = paragraph[max_chars - overlap:] if overlap > 0 and len(paragraph) > overlap else paragraph[max_chars:]
 
             current = paragraph
 
@@ -316,11 +324,11 @@ def critique_novelty(paper: PaperIndex) -> str:
     return ask_paper(paper, query)
 
 
-def find_claim_evidence(paper: PaperIndex, claim: str) -> str:
-    """Find where a specific claim is supported in the paper."""
+def verify_claim(paper: PaperIndex, claim: str) -> str:
+    """Search for evidence in the paper that may support, refute, or describe a specific claim."""
     query = (
-        f"Find where in the paper the following claim is supported or described, "
-        f"and summarize the evidence:\n\n\"{claim}\""
+        f"Search the paper for any evidence, discussion, or context that may support, refute, or describe the following claim. "
+        f"Summarize what the paper says about it, and note if the claim is not addressed:\n\n\"{claim}\""
     )
     return ask_paper(paper, query)
 
@@ -407,10 +415,15 @@ def main():
     # Build the paper index
     try:
         paper = PaperIndex.from_markdown(paper_path)
-    except Exception as e:
-        print(f"Error loading paper: {e}", file=sys.stderr)
+    except UnicodeDecodeError as e:
+        print(f"Error: Could not decode paper file (encoding issue): {e}", file=sys.stderr)
         sys.exit(1)
-
+    except OSError as e:
+        print(f"Error: Problem accessing paper file: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Unexpected error loading paper: {e}", file=sys.stderr)
+        sys.exit(1)
     print("", file=sys.stderr)  # Blank line before output
 
     # Execute the requested action(s)

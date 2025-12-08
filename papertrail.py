@@ -40,7 +40,12 @@ DEFAULT_TOP_K = 6  # number of chunks to retrieve
 # LLM Client
 # =============================================================================
 
-def llm_chat(messages: list[dict], temperature: float = 0.2, max_tokens: int = 1024) -> str:
+def llm_chat(
+    messages: list[dict],
+    temperature: float = 0.2,
+    max_tokens: int = 4096,
+    stream: bool = True
+) -> str:
     """
     Send a chat completion request to the local llama-server.
 
@@ -48,6 +53,7 @@ def llm_chat(messages: list[dict], temperature: float = 0.2, max_tokens: int = 1
         messages: List of message dicts with 'role' and 'content' keys.
         temperature: Sampling temperature (lower = more deterministic).
         max_tokens: Maximum tokens to generate.
+        stream: If True, stream tokens and print them as they are generated.
 
     Returns:
         The assistant's response content as a string.
@@ -56,22 +62,62 @@ def llm_chat(messages: list[dict], temperature: float = 0.2, max_tokens: int = 1
         requests.RequestException: If the server request fails.
         KeyError: If the response format is unexpected.
     """
+    import json as json_module
+
     payload = {
         "model": LLAMA_MODEL,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
+        "stream": stream,
     }
 
-    response = requests.post(LLAMA_API_URL, json=payload, timeout=120)
-    response.raise_for_status()
+    if stream:
+        # Streaming request - print tokens as they arrive
+        response = requests.post(
+            LLAMA_API_URL,
+            json=payload,
+            timeout=300,
+            stream=True
+        )
+        response.raise_for_status()
 
-    try:
-        return response.json()["choices"][0]["message"]["content"]
-    except (KeyError, IndexError) as e:
-        raise KeyError(
-            f"Unexpected response format from LLM server: {response.json()}"
-        ) from e
+        full_content = []
+        for line in response.iter_lines():
+            if not line:
+                continue
+
+            line = line.decode("utf-8")
+            if not line.startswith("data: "):
+                continue
+
+            data = line[6:]  # Remove "data: " prefix
+            if data == "[DONE]":
+                break
+
+            try:
+                chunk = json_module.loads(data)
+                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                content = delta.get("content", "")
+                if content:
+                    print(content, end="", flush=True)
+                    full_content.append(content)
+            except json_module.JSONDecodeError:
+                continue
+
+        print()  # Final newline after streaming completes
+        return "".join(full_content)
+    else:
+        # Non-streaming request
+        response = requests.post(LLAMA_API_URL, json=payload, timeout=300)
+        response.raise_for_status()
+
+        try:
+            return response.json()["choices"][0]["message"]["content"]
+        except (KeyError, IndexError) as e:
+            raise KeyError(
+                f"Unexpected response format from LLM server: {response.json()}"
+            ) from e
 
 
 # =============================================================================
@@ -427,30 +473,31 @@ def main():
     print("", file=sys.stderr)  # Blank line before output
 
     # Execute the requested action(s)
+    # Note: Functions use streaming by default, so output is printed inline
     try:
         if args.mode == "summary":
             print("=== High-Level Summary ===\n")
-            print(high_level_summary(paper))
+            high_level_summary(paper)
 
         elif args.mode == "outline":
             print("=== Section Outline ===\n")
-            print(section_outline(paper))
+            section_outline(paper)
 
         elif args.mode == "critique":
             print("=== Novelty & Critique ===\n")
-            print(critique_novelty(paper))
+            critique_novelty(paper)
 
         if args.ask:
             if args.mode:
                 print("\n" + "=" * 40 + "\n")
             print(f"=== Question: {args.ask} ===\n")
-            print(ask_paper(paper, args.ask, k=args.top_k))
+            ask_paper(paper, args.ask, k=args.top_k)
 
         if args.claim:
             if args.mode or args.ask:
                 print("\n" + "=" * 40 + "\n")
             print(f"=== Claim Evidence: {args.claim} ===\n")
-            print(find_claim_evidence(paper, args.claim))
+            verify_claim(paper, args.claim)
 
     except requests.exceptions.ConnectionError:
         print(

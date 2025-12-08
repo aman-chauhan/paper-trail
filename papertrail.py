@@ -343,7 +343,7 @@ Please answer based on the provided context. If relevant, reference specific con
 # Predefined Review Workflows
 # =============================================================================
 
-def high_level_summary(paper: PaperIndex) -> str:
+def high_level_summary(paper: PaperIndex, k: int = DEFAULT_TOP_K) -> str:
     """Generate a high-level summary of the paper."""
     query = (
         "Give a concise high-level summary of this paper. Cover: "
@@ -352,20 +352,20 @@ def high_level_summary(paper: PaperIndex) -> str:
         "3) Key results and findings, "
         "4) Significance or implications."
     )
-    return ask_paper(paper, query)
+    return ask_paper(paper, query, k=k)
 
 
-def section_outline(paper: PaperIndex) -> str:
+def section_outline(paper: PaperIndex, k: int = DEFAULT_TOP_K) -> str:
     """Generate a section-by-section outline of the paper."""
     query = (
         "Outline this paper section-by-section (e.g., Introduction, Related Work, "
         "Method, Experiments, Discussion, Conclusion). For each section you can identify, "
         "summarize the key points in 2-3 bullet points."
     )
-    return ask_paper(paper, query)
+    return ask_paper(paper, query, k=k)
 
 
-def critique_novelty(paper: PaperIndex) -> str:
+def critique_novelty(paper: PaperIndex, k: int = DEFAULT_TOP_K) -> str:
     """Identify claimed contributions and potential weaknesses."""
     query = (
         "Based on this paper, identify: "
@@ -373,16 +373,16 @@ def critique_novelty(paper: PaperIndex) -> str:
         "2) Potential weaknesses or limitations mentioned, "
         "3) Any threats to validity you notice in their claims or methodology."
     )
-    return ask_paper(paper, query)
+    return ask_paper(paper, query, k=k)
 
 
-def verify_claim(paper: PaperIndex, claim: str) -> str:
+def verify_claim(paper: PaperIndex, claim: str, k: int = DEFAULT_TOP_K) -> str:
     """Search for evidence in the paper that may support, refute, or describe a specific claim."""
     query = (
         f"Search the paper for any evidence, discussion, or context that may support, refute, or describe the following claim. "
         f"Summarize what the paper says about it, and note if the claim is not addressed:\n\n\"{claim}\""
     )
-    return ask_paper(paper, query)
+    return ask_paper(paper, query, k=k)
 
 
 # =============================================================================
@@ -487,15 +487,15 @@ def main():
     try:
         if args.mode == "summary":
             print("=== High-Level Summary ===\n")
-            high_level_summary(paper)
+            high_level_summary(paper, k=args.top_k)
 
         elif args.mode == "outline":
             print("=== Section Outline ===\n")
-            section_outline(paper)
+            section_outline(paper, k=args.top_k)
 
         elif args.mode == "critique":
             print("=== Novelty & Critique ===\n")
-            critique_novelty(paper)
+            critique_novelty(paper, k=args.top_k)
 
         if args.ask:
             if args.mode:
@@ -507,7 +507,7 @@ def main():
             if args.mode or args.ask:
                 print("\n" + "=" * 40 + "\n")
             print(f"=== Claim Evidence: {args.claim} ===\n")
-            verify_claim(paper, args.claim)
+            verify_claim(paper, args.claim, k=args.top_k)
 
     except requests.exceptions.ConnectionError:
         print(

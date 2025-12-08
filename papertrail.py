@@ -266,7 +266,7 @@ class PaperIndex:
             ValueError: If k is less than or equal to 0.
         """
         if k <= 0:
-            raise ValueError("k must be positive")
+            raise ValueError("k must be a positive integer")
 
         model = self._get_embedding_model()
         query_embedding = model.encode([query], convert_to_numpy=True)

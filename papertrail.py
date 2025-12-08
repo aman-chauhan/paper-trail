@@ -261,7 +261,13 @@ class PaperIndex:
 
         Returns:
             List of (chunk_text, similarity_score) tuples, sorted by relevance.
+
+        Raises:
+            ValueError: If k is less than or equal to 0.
         """
+        if k <= 0:
+            raise ValueError("k must be a positive integer")
+
         model = self._get_embedding_model()
         query_embedding = model.encode([query], convert_to_numpy=True)
         faiss.normalize_L2(query_embedding)
@@ -451,6 +457,10 @@ def main():
     # Validate that at least one action is specified
     if not any([args.mode, args.ask, args.claim]):
         parser.error("Please specify --mode, --ask, or --claim")
+
+    # Validate top-k parameter
+    if args.top_k <= 0:
+        parser.error("--top-k must be a positive integer")
 
     # Check that the paper file exists
     paper_path = Path(args.paper)
